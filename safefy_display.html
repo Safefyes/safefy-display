@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SAFEFY ARR — Display</title>
+<style>
+  :root{ --seg-on:#16ff5e; --seg-off:#0b3b1f; --bg:#000; }
+  html,body{height:100%;margin:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .logo{position:fixed;top:2vh;left:2vw;max-width:20%;opacity:0.9}
+  .display{display:flex;align-items:center;justify-content:center;gap:1.2vmin;width:100%;max-width:1800px;margin-top:6vh}
+  .digit{ width:min(16vw,18vh); aspect-ratio:0.6/1; }
+  .seg{ fill:var(--seg-off); transition:fill 120ms linear, opacity 120ms; opacity:.75 }
+  .on{ fill:var(--seg-on); opacity:1; }
+  .status{position:fixed;bottom:1vh;right:2vw;font-size:clamp(11px,1.6vmin,14px);color:#aaa;font-family:sans-serif;opacity:0.7}
+  .err{color:#ff6b6b}
+</style>
+</head>
+<body>
+  <!-- Cambia esta ruta por tu logo oficial SAFEFY -->
+  <img class="logo" src="logo_safefy.png" alt="SAFEFY logo"/>
+
+
+  <div id="display" class="display" aria-live="polite" aria-label="SAFEFY ARR"></div>
+  <div id="status" class="status">Conectando…</div>
+
+<script>
+/* ===== Config rápida ===== */
+const SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQIKfEpvYeJVwohyFBkknBf-ujnztTZk7Jghi8ipYj5haw1LwDuWXLaUjy_UO5_6rl_HWA9MUw5ekxv/pub?output=csv";
+const SHEETS_CELL = "A1"; // celda a leer
+const REFRESH_SEC = 15;
+
+/* ===== Helpers ===== */
+const pad5 = n => String(Math.max(0, Math.min(99999, Math.floor(n)))).padStart(5,'0');
+const SEG_MAP={'0':[1,1,1,1,1,1,0],'1':[0,1,1,0,0,0,0],'2':[1,1,0,1,1,0,1],'3':[1,1,1,1,0,0,1],'4':[0,1,1,0,0,1,1],'5':[1,0,1,1,0,1,1],'6':[1,0,1,1,1,1,1],'7':[1,1,1,0,0,0,0],'8':[1,1,1,1,1,1,1],'9':[1,1,1,1,0,1,1]};
+function digitSVG(){return`
+<svg viewBox="0 0 60 100" width="100%" height="100%" aria-hidden="true">
+  <polygon class="seg" points="12,6 48,6 42,12 18,12"/> <!-- a -->
+  <polygon class="seg" points="48,6 54,12 54,46 48,50 42,44 42,12"/> <!-- b -->
+  <polygon class="seg" points="48,50 54,54 54,88 48,94 42,88 42,56"/> <!-- c -->
+  <polygon class="seg" points="12,94 48,94 42,88 18,88"/> <!-- d -->
+  <polygon class="seg" points="12,50 18,56 18,88 12,94 6,88 6,54"/> <!-- e -->
+  <polygon class="seg" points="12,6 18,12 18,44 12,50 6,46 6,12"/> <!-- f -->
+  <polygon class="seg" points="16,50 44,50 40,56 20,56"/> <!-- g -->
+</svg>`}
+const displayEl=document.getElementById("display");
+const digits=[];for(let i=0;i<5;i++){const d=document.createElement("div");d.className="digit";d.innerHTML=digitSVG();displayEl.appendChild(d);digits.push(d)}
+function setDigit(el,ch){const map=SEG_MAP[ch]||[0,0,0,0,0,0,0];el.querySelectorAll(".seg").forEach((s,i)=>map[i]?s.classList.add("on"):s.classList.remove("on"))}
+function renderNumber(n){const s=pad5(n);for(let i=0;i<5;i++)setDigit(digits[i],s[i]);displayEl.setAttribute("aria-label","SAFEFY ARR "+s)}
+
+/* ===== CSV fetch ===== */
+function parseCSV(text){
+  const rows=text.trim().split(/\r?\n/).map(r=>r.split(","));
+  if(!rows.length) return null;
+  if(!SHEETS_CELL) return rows[0][0];
+  const m=SHEETS_CELL.match(/^([A-Za-z]+)(\d+)$/);
+  if(m){
+    const colLetters=m[1].toUpperCase(), rowIndex=parseInt(m[2],10)-1;
+    let colIndex=0;for(let i=0;i<colLetters.length;i++){colIndex=colIndex*26+(colLetters.charCodeAt(i)-64);}
+    colIndex--; return rows[rowIndex]&&rows[rowIndex][colIndex]!=null?rows[rowIndex][colIndex]:null
+  }
+  return null;
+}
+async function fetchAndRender(){
+  const st=document.getElementById("status");
+  try{
+    const res=await fetch(SHEETS_CSV_URL,{cache:"no-cache"}),text=await res.text();
+    let raw=parseCSV(text); if(raw==null){st.innerHTML='<span class="err">CSV vacío</span>';return;}
+    raw=String(raw).replace(/[€\s]/g,"").replace(/\./g,"").replace(",",".");
+    let val=Math.floor(Number(raw)); if(!Number.isFinite(val)){st.innerHTML='<span class="err">Dato inválido</span>';return;}
+    if(val<0)val=0;if(val>99999)val=99999;
+    renderNumber(val); st.textContent="Última actualización: "+new Date().toLocaleTimeString();
+  }catch(e){console.error(e);document.getElementById("status").innerHTML='<span class="err">Error conexión</span>'}
+}
+renderNumber(0); fetchAndRender(); setInterval(fetchAndRender,REFRESH_SEC*1000);
+
+/* Tecla F para pantalla completa */
+document.addEventListener("keydown",e=>{
+  if(e.key.toLowerCase()==="f"){
+    if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }
+});
+</script>
+</body>
+</html>
